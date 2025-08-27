@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/leaderboard",
+      "destination": "https://monad-games-id-site.vercel.app/api/leaderboard"
+    }
+  ]
+}
