@@ -15,7 +15,7 @@ const gameWallet = new ethers.Wallet(process.env.GAME_PRIVATE_KEY, provider);
 const gameContract = new ethers.Contract(contractAddress, contractABI, gameWallet);
 
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'este-e-um-segredo-temporario-mude-depois',
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
     cookie: { maxAge: 3600000 }
