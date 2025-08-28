@@ -1,25 +1,16 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import '../styles/globals.css';
 import { usePrivy } from "@privy-io/react-auth";
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
-const GameCard = ({ card, isFlipped, onClick, disabled }) => {
+const GameCard = ({ card }) => {
+  const isFlipped = card.image !== null || card.matched;
   return (
-    <div
-      className={`game-card ${isFlipped ? 'flipped' : ''} ${disabled ? 'disabled' : ''}`}
-      onClick={onClick}
-      style={{
-        transform: `scale(${isFlipped ? '1.05' : '1'})`,
-        transition: 'all 0.3s ease',
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        msUserSelect: 'none',
-      }}
-    >
+    <div className={`game-card ${isFlipped ? 'flipped' : ''}`}>
       <div className="card-inner">
         <div className="card-front"><div className="card-content">?</div></div>
-        <div className="card-back">{card.image && <img src={card.image} alt="Memory card" loading="lazy" />}</div>
+        <div className="card-back">{card.image && <img src={`${API_URL}${card.image}`} alt="Memory card" loading="lazy" />}</div>
       </div>
     </div>
   );
@@ -28,9 +19,8 @@ const GameCard = ({ card, isFlipped, onClick, disabled }) => {
 const Timer = ({ time }) => {
   const formatTime = (ms) => {
     if (ms < 0) ms = 0;
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
     const centiseconds = Math.floor((ms % 1000) / 10);
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
   };
@@ -39,199 +29,224 @@ const Timer = ({ time }) => {
   );
 };
 
-const ThemeToggle = ({ isDark, onToggle }) => (
-  <button className="theme-toggle" onClick={onToggle}>{isDark ? '☀️' : '🌙'}</button>
-);
-
-const LoadingScreen = () => (
-  <div className="loading-overlay">
-    <div className="spinner"></div>
-    <p>Loading game...</p>
-  </div>
-);
-
+const ThemeToggle = ({ isDark, onToggle }) => (<button className="theme-toggle" onClick={onToggle}>{isDark ? '☀️' : '🌙'}</button>);
+const LoadingScreen = () => (<div className="loading-overlay"><div className="spinner"></div><p>Loading game...</p></div>);
 
 const MemoryGame = ({ onGameEnd, onGoHome }) => {
   const [cards, setCards] = useState([]);
-  const [flippedIds, setFlippedIds] = useState([]);
-  const [gameState, setGameState] = useState('playing');
+  const [gameState, setGameState] = useState('loading');
   const [finalScore, setFinalScore] = useState(0);
-  const [disabled, setDisabled] = useState(false);
-  const [time, setTime] = useState(180000);
-  const [isLoading, setIsLoading] = useState(true);
-  const [gameStarted, setGameStarted] = useState(false);
+  const [visualTime, setVisualTime] = useState(180000);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
-  const flipTimeout = useRef(null);
-  
-  const { user } = usePrivy();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const { user, ready, authenticated, logout } = usePrivy();
   const [accountAddress, setAccountAddress] = useState(null);
 
   useEffect(() => {
-    if (user && user.linkedAccounts && user.linkedAccounts.length > 0) {
-      const monadGamesAccount = user.linkedAccounts.find(
-        (account) =>
-          account.type === 'cross_app' &&
-          account.providerApp.id === 'cmd8euall0037le0my79qpz42'
-      );
-
-      if (monadGamesAccount && monadGamesAccount.embeddedWallets && monadGamesAccount.embeddedWallets.length > 0) {
-        const address = monadGamesAccount.embeddedWallets[0].address;
-        setAccountAddress(address);
-        console.log("Monad Games ID wallet address found:", address);
-      } else {
-        console.warn("Monad Games ID account found, but no embedded wallet.");
-      }
+    if (!ready || !authenticated || !user) {
+      setAccountAddress(null);
+      return;
     }
-  }, [user]);
+    const crossAppAccount = user.linkedAccounts.find(
+      (account) =>
+        account.type === 'cross_app' &&
+        account.providerApp.id === 'cmd8euall0037le0my79qpz42'
+    );
+
+    if (crossAppAccount && crossAppAccount.embeddedWallets?.length > 0) {
+      const monadAddress = crossAppAccount.embeddedWallets[0].address;
+      setAccountAddress(monadAddress);
+    } else {
+      console.warn("WARNING: User is authenticated but Monad Games ID wallet was not found. Logging out.");
+      logout();
+    }
+  }, [ready, authenticated, user, logout]);
 
   useEffect(() => { localStorage.setItem('theme', isDarkMode ? 'dark' : 'light'); }, [isDarkMode]);
 
-  const preloadImages = (urls) => {
-    const promises = urls.map(url => {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.src = `${API_URL}${url}`;
-        img.onload = resolve;
-        img.onerror = reject;
-      });
-    });
-    return Promise.all(promises);
-  };
-
-  const startNewGame = useCallback(async () => {
-    setIsLoading(true);
-    setGameStarted(false);
-    clearTimeout(flipTimeout.current);
-    try {
-      const response = await fetch(`${API_URL}/api/game/new`);
-      const data = await response.json();
-      await preloadImages(data.imageUrls);
-      setCards(data.board.map(card => ({ ...card, image: null })));
-      setFlippedIds([]);
-      setGameState('playing');
-      setFinalScore(0);
-      setTime(data.timeRemaining);
-    } catch (error) {
-      console.error("Failed to start new game:", error);
-    } finally {
-      setIsLoading(false);
-    }
+  const preloadImages = useCallback(async (urls) => {
+    if (!Array.isArray(urls)) return;
+    await Promise.all(urls.map(url => new Promise((resolve) => {
+      const img = new Image();
+      img.src = `${API_URL}${url}`;
+      img.onload = img.onerror = resolve;
+    })));
   }, []);
 
-  useEffect(() => {
-    startNewGame();
-  }, [startNewGame]);
+  const startNewGame = useCallback(async () => {
+    setGameState('loading');
+    setIsProcessing(false);
+    try {
+      const response = await fetch(`${API_URL}/api/game/new`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      const data = await response.json();
+      if (data && data.gameState && data.gameState.board) {
+        await preloadImages(data.imageUrls);
+        setGameState(data.gameState.gameStatus);
+        setCards(data.gameState.board);
+        setVisualTime(data.gameState.timeRemaining);
+        setFinalScore(0);
+      } else {
+        setGameState('error');
+      }
+    } catch (error) {
+      console.error("Failed to start new game:", error);
+      setGameState('error');
+    }
+  }, [preloadImages]);
+
+  useEffect(() => { startNewGame(); }, [startNewGame]);
 
   useEffect(() => {
-    if (!gameStarted || gameState !== 'playing' || isLoading) return;
-    
-    const timer = setInterval(async () => {
+    if (gameState !== 'playing') return;
+    const visualTimerInterval = setInterval(() => setVisualTime(t => t > 0 ? t - 101 : 0), 101);
+    const syncTimerInterval = setInterval(async () => {
+      if (document.hidden) return;
       try {
-        const response = await fetch(`${API_URL}/api/game/state`);
+        const response = await fetch(`${API_URL}/api/game/state`, { credentials: 'include' });
         const data = await response.json();
-        setTime(data.timeRemaining);
-        if (data.gameStatus !== 'playing') {
-          setGameState(data.gameStatus);
-          setGameStarted(false);
+        if (data && data.gameState) {
+            setVisualTime(data.gameState.timeRemaining);
+            if (data.gameState.gameStatus !== 'playing') {
+              setGameState(data.gameState.gameStatus);
+            }
         }
       } catch (error) {
-        console.error("Error fetching game state:", error);
+        console.error("Error syncing game state:", error);
       }
-    }, 100);
-    return () => clearInterval(timer);
-  }, [gameStarted, gameState, isLoading]);
+    }, 10000);
 
-  const handleCardClick = async (clickedCard) => {
-    if (disabled || clickedCard.matched || flippedIds.includes(clickedCard.id) || !accountAddress) {
-      if (!accountAddress) console.warn("Waiting for wallet address to play.");
-      return;
-    }
+    return () => {
+      clearInterval(visualTimerInterval);
+      clearInterval(syncTimerInterval);
+    };
+  }, [gameState]);
 
-    if (!gameStarted) {
-      setGameStarted(true);
-    }
+  const handleCardClick = async (card) => {
 
-    const newFlippedIds = [...flippedIds, clickedCard.id];
-    setFlippedIds(newFlippedIds);
+    if (isProcessing || (gameState !== 'playing' && gameState !== 'ready') || card.matched || card.image) return;
+    
+    setIsProcessing(true);
 
     try {
       const response = await fetch(`${API_URL}/api/game/flip`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          cardId: clickedCard.id,
-          walletAddress: accountAddress
-        }),
+        body: JSON.stringify({ cardId: card.id, walletAddress: accountAddress }),
+        credentials: 'include',
       });
 
       if (!response.ok) {
-        setFlippedIds(flippedIds);
-        throw new Error(`Server responded with ${response.status}`);
-      }
-      
-      const data = await response.json();
-
-      setCards(prevCards => prevCards.map(c => {
-        const revealedCard = data.cards.find(rc => rc.id === c.id);
-        return revealedCard ? { ...c, image: `${API_URL}${revealedCard.image}` } : c;
-      }));
-
-      if (data.gameWon) {
-        setGameState('won');
-        setFinalScore(data.score);
-        onGameEnd(data.score);
+        if (response.status === 429) {
+          console.warn('Fast requisition, too many requests');
+        } else {
+          console.error(`Error from server: ${response.status}`);
+        }
+        setIsProcessing(false);
         return;
       }
 
-      if (newFlippedIds.length === 2) {
-        setDisabled(true);
-        if (data.match) {
-          setTimeout(() => {
-            setCards(prevCards => prevCards.map(c => newFlippedIds.includes(c.id) ? { ...c, matched: true } : c));
-            setFlippedIds([]);
-            setDisabled(false);
-          }, 500);
-        } else {
-          flipTimeout.current = setTimeout(() => {
-            setFlippedIds([]);
-            setDisabled(false);
-          }, 1000);
+      const responseData = await response.json();
+      
+      if (responseData && responseData.gameState && responseData.gameState.board) {
+        setCards(responseData.gameState.board);
+        setGameState(responseData.gameState.gameStatus);
+        setVisualTime(responseData.gameState.timeRemaining);
+
+        if (responseData.gameState.gameStatus === 'won') {
+          setFinalScore(responseData.gameState.score);
+          onGameEnd(responseData.gameState.score);
         }
+
+        const flippedNonMatched = responseData.gameState.board.filter(c => c.image && !c.matched);
+        
+        if (flippedNonMatched.length === 2) {
+
+          setTimeout(async () => {
+            try {
+              const syncResponse = await fetch(`${API_URL}/api/game/state`, { credentials: 'include' });
+              const syncData = await syncResponse.json();
+              if (syncData && syncData.gameState && syncData.gameState.board) {
+                setCards(syncData.gameState.board);
+              }
+            } catch (e) {
+              console.error("Failed to re-sync after error:", e);
+            } finally {
+                setIsProcessing(false);
+            }
+          }, 1200);
+        } else {
+            setIsProcessing(false);
+        }
+      } else {
+        setIsProcessing(false);
       }
     } catch (error) {
-      console.error("Error flipping card:", error);
-      setDisabled(false);
+      console.error("Erro ao virar carta:", error);
+      setIsProcessing(false);
     }
   };
 
-  const isCardFlipped = (card) => flippedIds.includes(card.id) || card.matched;
-
-  if (isLoading) {
-    return <LoadingScreen />;
-  }
+  if (gameState === 'loading') return <LoadingScreen />;
 
   return (
     <div className={`memory-game-container ${isDarkMode ? 'dark' : 'light'}`}>
       <div className="top-controls-container">
-        <button className="control-btn home-btn" onClick={onGoHome}>←</button>
+        <button className="control-btn home-btn" onClick={onGoHome}>
+          ←
+        </button>
         <ThemeToggle isDark={isDarkMode} onToggle={() => setIsDarkMode(!isDarkMode)} />
-        <Timer time={time} />
-        <button className="control-btn restart-btn" onClick={startNewGame}>↻</button>
+        <Timer time={visualTime} />
+        <button className="control-btn restart-btn" onClick={startNewGame}>
+          ↻
+        </button>
       </div>
 
-      <div className="background-image" style={{ backgroundImage: 'url(https://i.ibb.co/67VCzM6Y/file-00000000e89061fdb3c4740bdaed57b2-1.png)', backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', opacity: isDarkMode ? 0.3 : 0.5 }} />
-      
-      <div className="game-grid">
-        {cards.map((card) => (
-          <GameCard key={card.id} card={card} isFlipped={isCardFlipped(card)} onClick={() => handleCardClick(card)} disabled={disabled} />
-        ))}
+      <div
+        className="background-image"
+        style={{
+          backgroundImage: 'url(https://i.ibb.co/67VCzM6Y/file-00000000e89061fdb3c4740bdaed57b2-1.png)',
+          backgroundSize: 'contain',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          opacity: isDarkMode ? 0.3 : 0.5,
+        }}
+      />
+
+      <div className={`game-grid ${isProcessing ? 'processing' : ''}`}>
+        {Array.isArray(cards) &&
+          cards.map((card) => (
+            <div key={card.id} onClick={() => handleCardClick(card)}>
+              <GameCard card={card} />
+            </div>
+          ))}
       </div>
 
       {gameState === 'won' && (
-        <div className="win-modal"><div className="win-content"><h2>🎉 Congratulations!</h2><p>Your score: {finalScore}</p><button className="play-again-btn" onClick={onGoHome}>Back to Home</button></div></div>
+        <div className="win-modal">
+          <div className="win-content">
+            <h2>🎉 Congratulations!</h2>
+            <p>Your score: {finalScore}</p>
+            <button className="play-again-btn" onClick={onGoHome}>
+              Back
+            </button>
+          </div>
+        </div>
       )}
+
       {gameState === 'lost' && (
-        <div className="win-modal"><div className="win-content"><h2>😔 Time's Up!</h2><p>Try again to improve your score.</p><button className="play-again-btn" onClick={startNewGame}>Play Again</button></div></div>
+        <div className="win-modal">
+          <div className="win-content">
+            <h2>😔 Time's Up!</h2>
+            <p>Try again to improve.</p>
+            <button className="play-again-btn" onClick={startNewGame}>
+              Play Again
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

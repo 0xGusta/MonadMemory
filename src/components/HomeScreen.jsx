@@ -77,21 +77,49 @@ const HomeScreen = ({ onPlay }) => {
   }, [authenticated, accountAddress, logout]);
 
 
+  // const fetchLeaderboard = useCallback(async (page) => {
+  //   const url = `/api/leaderboard?page=${page}&limit=${itemsPerPage}&gameId=107&sortBy=scores` || https://api.allorigins.win/raw?url=https://monad-games-id-site.vercel.app/api/leaderboard?page=${page}&limit=${itemsPerPage}&gameId=107&sortBy=scores;
+  //   try {
+  //     const response = await fetch(url);
+  //     if (!response.ok) {
+  //       throw new Error('Failed to fetch leaderboard from Vercel proxy.');
+  //     }
+  //     const data = await response.json();
+  //     setLeaderboard(data.data || []);
+  //     setTotalPages(data.pagination.totalPages || 1);
+  //   } catch (err) {
+  //     console.error("Failed to fetch leaderboard:", err);
+  //     setError("Could not load leaderboard.");
+  //   }
+  // }, [itemsPerPage]);
+
   const fetchLeaderboard = useCallback(async (page) => {
-    const url = `/api/leaderboard?page=${page}&limit=${itemsPerPage}&gameId=107&sortBy=scores`;
+  const primaryUrl = `/api/leaderboard?page=${page}&limit=${itemsPerPage}&gameId=107&sortBy=scores`;
+  const fallbackUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
+    `https://monad-games-id-site.vercel.app/api/leaderboard?page=${page}&limit=${itemsPerPage}&gameId=107&sortBy=scores`
+  )}`;
+
+  try {
+    const response = await fetch(primaryUrl);
+    if (!response.ok) throw new Error("Primary URL failed");
+    const data = await response.json();
+    setLeaderboard(data.data || []);
+    setTotalPages(data.pagination?.totalPages || 1);
+  } catch (err) {
+    console.warn("Primary URL failed, trying fallback...", err);
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('Failed to fetch leaderboard from Vercel proxy.');
-      }
+      const response = await fetch(fallbackUrl);
+      if (!response.ok) throw new Error("Fallback URL failed");
       const data = await response.json();
       setLeaderboard(data.data || []);
-      setTotalPages(data.pagination.totalPages || 1);
-    } catch (err) {
-      console.error("Failed to fetch leaderboard:", err);
+      setTotalPages(data.pagination?.totalPages || 1);
+    } catch (fallbackErr) {
+      console.error("Both URLs failed:", fallbackErr);
       setError("Could not load leaderboard.");
     }
-  }, [itemsPerPage]);
+  }
+}, [itemsPerPage]);
+
 
   useEffect(() => {
     fetchLeaderboard(currentPage);
@@ -119,6 +147,15 @@ const HomeScreen = ({ onPlay }) => {
 
   const handlePrevPage = () => {
     setCurrentPage(prev => Math.max(1, prev - 1));
+  };
+
+  const formatTime = (score) => {
+    const MAX_SCORE = 180000;
+    const timeTaken = MAX_SCORE - score;
+    const minutes = Math.floor(timeTaken / 60000);
+    const seconds = Math.floor((timeTaken % 60000) / 1000);
+    const milliseconds = timeTaken % 1000;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}.${milliseconds}`;
   };
 
   return (
@@ -152,7 +189,7 @@ const HomeScreen = ({ onPlay }) => {
             Play
           </button>
         ))}
-
+      </div>
         <div className="ranking-container">
           <h2 className="ranking-title">Leaderboard</h2>
           {error ? (
@@ -162,7 +199,8 @@ const HomeScreen = ({ onPlay }) => {
               <ul className="ranking-list">
                 {leaderboard.slice(0, 10).map((player, index) => (
                   <li key={player.userId || index}>
-                    {(currentPage - 1) * itemsPerPage + index + 1}. {player.username} - {player.score / 2}
+                    {(currentPage - 1) * itemsPerPage + index + 1}. {player.username} - 
+                    {player.score/2} pts - {formatTime(player.score/2)}
                   </li>
                 ))}
               </ul>
@@ -174,7 +212,6 @@ const HomeScreen = ({ onPlay }) => {
             </>
           )}
         </div>
-      </div>
     </div>
   );
 };
