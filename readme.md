@@ -72,3 +72,7 @@ The application should now be running on `http://localhost:3000`.
 ### Backend
 
 * `npm start`: Starts the Node.js server.
+
+## Devs
+
+[7n](https://x.com/7nds_) and [0xGus](https://x.com/0xGustavo)
