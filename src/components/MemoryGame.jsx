@@ -177,7 +177,7 @@ const MemoryGame = ({ onGameEnd, onGoHome }) => {
             } finally {
                 setIsProcessing(false);
             }
-          }, 1200);
+          }, 700);
         } else {
             setIsProcessing(false);
         }
