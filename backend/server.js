@@ -14,17 +14,24 @@ const provider = new ethers.JsonRpcProvider(process.env.MONAD_RPC_URL);
 const gameWallet = new ethers.Wallet(process.env.GAME_PRIVATE_KEY, provider);
 const gameContract = new ethers.Contract(contractAddress, contractABI, gameWallet);
 
+app.set('trust proxy', 1);
+
+app.use(cors({
+    origin: 'https://monadmemory.vercel.app',
+    credentials: true
+}));
+
 app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
-    cookie: { maxAge: 3600000 }
+    cookie: {
+        maxAge: 3600000,
+        secure: true,
+        sameSite: 'none'
+    }
 }));
 
-app.use(cors({
-    origin: 'https://monadmemory.vercel.app/',
-    credentials: true
-}));
 
 app.use(express.json());
 app.use('/images', express.static(path.join(__dirname, 'public/images')));
@@ -75,7 +82,7 @@ async function submitScoreToBlockchain(walletAddress, newScore) {
     try {
         const currentPlayerData = await gameContract.playerDataPerGame(gameWallet.address, walletAddress);
         const currentScore = currentPlayerData.score;
-        if (newScore > currentScore) {
+        if (newScore > Number(currentScore)) {
             const scoreAmountToAdd = newScore - Number(currentScore);
             const tx = await gameContract.updatePlayerData(walletAddress, scoreAmountToAdd, 1);
             await tx.wait();
@@ -186,7 +193,7 @@ app.post('/api/game/flip', async (req, res) => {
                     req.session.gameState.flipLock = false;
                     req.session.save(); 
                 }
-            }, 1000);
+            }, 500);
         }
     } catch(error) {
         console.error("Erro no endpoint /flip:", error);
