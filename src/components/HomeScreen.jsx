@@ -199,8 +199,7 @@ const HomeScreen = ({ onPlay }) => {
               <ul className="ranking-list">
                 {leaderboard.slice(0, 10).map((player, index) => (
                   <li key={player.userId || index}>
-                    {(currentPage - 1) * itemsPerPage + index + 1}. {player.username} - 
-                    {player.score/2} pts - {formatTime(player.score/2)}
+                    {(currentPage - 1) * itemsPerPage + index + 1}. {player.username} {player.score/2}pts ({formatTime(player.score/2)})
                   </li>
                 ))}
               </ul>
