@@ -5,7 +5,7 @@ This is a memory game built on the Monad, featuring a React frontend and a Node.
 ## Features
 
 * **Classic Memory Gameplay:** A timed card-matching game to test your memory.
-* **Blockchain Integration:** Player scores are recorded on the Monad blockchain via a smart contract.
+* **Blockchain Integration:** Player scores are recorded on the Monad blockchain via Monad Games ID.
 * **Leaderboard:** A real-time leaderboard fetches scores to rank players.
 * **Web3 Authentication:** Utilizes Privy for seamless user login with Monad Games ID.
 * **Dynamic UI:** Includes dark/light theme toggling and responsive design for different screen sizes.
