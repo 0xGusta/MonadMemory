@@ -94,7 +94,7 @@ const HomeScreen = ({ onPlay }) => {
   // }, [itemsPerPage]);
 
   const fetchLeaderboard = useCallback(async (page) => {
-  const primaryUrl = `/api/leaderboard?page=${page}&limit=${itemsPerPage}&gameId=107&sortBy=scores`;
+  const primaryUrl = `/api/leaderboard?page=${page}&limit=${itemsPerPage}&gameId=218&sortBy=scores`;
   const fallbackUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
     `https://monad-games-id-site.vercel.app/api/leaderboard?page=${page}&limit=${itemsPerPage}&gameId=107&sortBy=scores`
   )}`;
@@ -199,7 +199,7 @@ const HomeScreen = ({ onPlay }) => {
               <ul className="ranking-list">
                 {leaderboard.slice(0, 10).map((player, index) => (
                   <li key={player.userId || index}>
-                    {(currentPage - 1) * itemsPerPage + index + 1}. {player.username} {player.score/2}pts ({formatTime(player.score/2)})
+                    {(currentPage - 1) * itemsPerPage + index + 1}. {player.username} {player.score}pts ({formatTime(player.score)})
                   </li>
                 ))}
               </ul>
